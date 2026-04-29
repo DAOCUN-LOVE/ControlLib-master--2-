@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QObject>
 #include <QColor>
 #include <QPoint>
 #include <QRectF>

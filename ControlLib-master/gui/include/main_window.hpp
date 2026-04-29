@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QObject>
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QLabel>

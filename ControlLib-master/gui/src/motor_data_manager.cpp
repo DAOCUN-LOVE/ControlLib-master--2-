@@ -107,7 +107,8 @@ bool MotorDataManager::ensureMotor(const QString &canName, int motorId) {
         }
 
         Hardware::DJIMotorManager::start();
-        motor_ = std::make_unique<Hardware::DJIMotor>(6020, can_name, motorId);
+        Hardware::DJIMotorConfig config(Hardware::DJIMotorConfig::TypeCast(6020), can_name, motorId);
+        motor_ = std::make_unique<Hardware::DJIMotor>(config);
         motor_->enable();
     } catch (const std::exception &e) {
         emit error(QStringLiteral("初始化 CAN/GM6020 失败：%1").arg(QString::fromLocal8Bit(e.what())));
