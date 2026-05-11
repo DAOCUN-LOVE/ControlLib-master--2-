@@ -3,7 +3,6 @@
 #include "dji_motor.hpp"
 #include "io.hpp"
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <exception>
@@ -62,6 +61,7 @@ void MotorDataManager::applyControlParameters(float targetSpeed, float kp, float
     params_.kp = kp;
     params_.ki = ki;
     params_.kd = kd;
+    configurePidLocked();
     resetPidStateLocked();
 }
 
@@ -125,6 +125,12 @@ bool MotorDataManager::ensureMotor(const QString &canName, int motorId) {
     can_name_ = normalized_can;
     motor_id_ = motorId;
     motor_registered_ = true;
+
+    {
+        std::lock_guard<std::mutex> lock(control_mutex_);
+        configurePidLocked();
+        resetPidStateLocked();
+    }
     return true;
 }
 
@@ -183,32 +189,46 @@ SpeedData MotorDataManager::makeSample(double timestamp,
 }
 
 int16_t MotorDataManager::updateCurrentCommand(const ControlParameters &params) {
-    if (!motor_) {
+    if (!motor_ || !speed_pid_) {
         return 0;
     }
 
-    const float actual_speed = motor_->data_.rotor_angular_velocity;
-    const float error = params.target_speed - actual_speed;
-    const float derivative = has_last_error_ ? (error - last_error_) : 0.0f;
+    speed_pid_->set(params.target_speed);
 
-    pid_iout_ += params.ki * error;
-    pid_iout_ = std::clamp(pid_iout_, -kMaxIntegralOutput, kMaxIntegralOutput);
-
-    const float output = std::clamp(params.kp * error + pid_iout_ + params.kd * derivative,
-                                   -kMaxCurrentCommand,
-                                   kMaxCurrentCommand);
-
-    last_error_ = error;
-    has_last_error_ = true;
-
-    const auto command = static_cast<int16_t>(std::lround(output));
+    const auto command = static_cast<int16_t>(std::lround(speed_pid_->out));
     motor_->set_directly(static_cast<float>(command));
     return command;
 }
 
+void MotorDataManager::configurePidLocked() {
+    if (!motor_) {
+        speed_pid_.reset();
+        return;
+    }
+
+    const Pid::PidConfig config{
+        params_.kp,
+        params_.ki,
+        params_.kd,
+        kMaxCurrentCommand,
+        kMaxIntegralOutput,
+    };
+
+    if (!speed_pid_) {
+        speed_pid_ = std::make_unique<Pid::PidPosition>(config, motor_->data_.rotor_angular_velocity);
+        return;
+    }
+
+    speed_pid_->kp = config.kp;
+    speed_pid_->ki = config.ki;
+    speed_pid_->kd = config.kd;
+    speed_pid_->max_out = config.max_out;
+    speed_pid_->max_iout = config.max_iout;
+}
+
 void MotorDataManager::resetPidStateLocked() {
-    pid_iout_ = 0.0f;
-    last_error_ = 0.0f;
-    has_last_error_ = false;
+    if (speed_pid_) {
+        speed_pid_->clean();
+    }
     last_command_current_ = 0;
 }

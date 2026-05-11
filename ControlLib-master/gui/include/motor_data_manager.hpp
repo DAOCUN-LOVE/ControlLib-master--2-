@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 
+#include "pid.hpp"
 #include "speed_monitor.hpp"
 
 namespace Hardware {
@@ -47,17 +48,19 @@ private:
     void dataCollectionThread();
     SpeedData makeSample(double timestamp, const ControlParameters &params, int16_t commandCurrent) const;
     int16_t updateCurrentCommand(const ControlParameters &params);
+    void configurePidLocked();
     void resetPidStateLocked();
 
     static constexpr int kControlIntervalMs = 10;
     static constexpr int kSampleIntervalMs = 50;
     static constexpr float kMaxCurrentCommand = 30000.0f;
-    static constexpr float kMaxIntegralOutput = 10000.0f;
+    static constexpr float kMaxIntegralOutput = 15000.0f;
     static constexpr double kRawCurrentToAmp = 20.0 / 16384.0;
 
     SpeedMonitor monitor_;
 
     std::unique_ptr<Hardware::DJIMotor> motor_;
+    std::unique_ptr<Pid::PidPosition> speed_pid_;
     QString can_name_;
     int motor_id_ = 0;
     bool can_registered_ = false;
@@ -68,8 +71,5 @@ private:
 
     mutable std::mutex control_mutex_;
     ControlParameters params_;
-    float pid_iout_ = 0.0f;
-    float last_error_ = 0.0f;
-    bool has_last_error_ = false;
     int16_t last_command_current_ = 0;
 };
